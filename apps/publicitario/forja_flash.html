@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FORJA · fotómetro ↔ flash</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --panel:#f4f4f4;
+    --line:#d5d5d5;
+    --ink:#111111;
+    --ink-dim:#767676;
+    --accent:#111111;
+    --accent-dim:#444444;
+    --mono: ui-monospace, "SF Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:var(--mono); font-size:12px; line-height:1.5;
+    max-width:860px; margin:0 auto; padding:0 20px 40px;
+  }
+  header{
+    padding:14px 0 10px; border-bottom:1px solid var(--line);
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  }
+  header h1{margin:0; font-size:12px; font-weight:600; letter-spacing:.18em; cursor:pointer; user-select:none}
+  header h1:hover{color:var(--ink-dim)}
+  header p{margin:0; color:var(--ink-dim); font-size:11px}
+
+  section{padding:16px 0; border-bottom:1px solid var(--line)}
+  .stage-num{display:flex; align-items:baseline; gap:8px; margin-bottom:10px; color:var(--ink-dim)}
+  .stage-num .n{color:var(--ink); font-weight:600}
+  .stage-num .arrow{color:var(--line)}
+  .stage-num .t{color:var(--ink); letter-spacing:.06em; text-transform:uppercase; font-size:10px}
+  .sub{color:var(--ink-dim); font-size:10px; margin:8px 0 4px; letter-spacing:.04em; text-transform:uppercase}
+
+  .fila{display:flex; flex-wrap:wrap; gap:4px}
+  .fila button{
+    font-family:var(--mono); font-size:12px; cursor:pointer;
+    border:1px solid var(--line); border-radius:2px; background:#fff; color:var(--ink-dim);
+    padding:7px 0; min-width:46px; text-align:center;
+    transition:border-color .1s, color .1s, background .1s;
+  }
+  .fila button:hover{border-color:var(--ink); color:var(--ink)}
+  .fila button.on{background:var(--ink); border-color:var(--ink); color:#fff; font-weight:600}
+  .fila.tercios button{min-width:40px; padding:6px 0; font-size:11px}
+  .fila.tercios button.entero{color:var(--ink); font-weight:600}
+  .fila.tercios button.entero.on{color:#fff}
+  .fila button:focus-visible{outline:1px solid var(--ink); outline-offset:2px}
+
+  /* resultado */
+  #res{padding:20px 0}
+  #flash-linea{font-size:22px; font-weight:600; letter-spacing:.02em; margin:0 0 4px}
+  #flash-linea small{font-size:12px; font-weight:400; color:var(--ink-dim)}
+  #flash-nota{color:var(--ink-dim); font-size:11px; min-height:16px}
+
+  .alts{margin-top:14px; display:flex; flex-direction:column; gap:8px}
+  .alt{
+    background:var(--panel); border:1px solid var(--line); border-radius:2px;
+    padding:10px 12px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap;
+  }
+  .alt .tag{font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-dim); min-width:104px}
+  .alt b{font-weight:600}
+  .alt select{
+    font-family:var(--mono); font-size:12px; border:1px solid var(--line); border-radius:2px;
+    background:#fff; color:var(--ink); padding:2px 4px;
+  }
+  .alt .resto{color:var(--ink-dim); font-size:10px}
+
+  /* regla EV: tercios arriba, décimas abajo */
+  #regla-wrap{margin-top:18px}
+  #regla{position:relative; height:86px; border-left:1px solid var(--line); border-right:1px solid var(--line)}
+  #regla .eje{position:absolute; left:0; right:0; top:43px; height:1px; background:var(--ink)}
+  .tick{position:absolute; width:1px; background:var(--ink-dim)}
+  .tick.tercio{top:29px; height:14px}
+  .tick.decima{top:44px; height:10px}
+  .tick.entero{top:21px; height:22px; width:2px; background:var(--ink)}
+  .ticklab{position:absolute; transform:translateX(-50%); font-size:9px; color:var(--ink-dim); white-space:nowrap}
+  .ticklab.arriba{top:6px; color:var(--ink); font-weight:600}
+  .marca{position:absolute; transform:translateX(-50%); font-size:10px; font-weight:600; text-align:center}
+  .marca.med{top:60px}
+  .marca.obj{top:60px}
+  .marca .pin{display:block; width:7px; height:7px; border-radius:50%; margin:0 auto 2px}
+  .marca.med .pin{background:#fff; border:2px solid var(--ink)}
+  .marca.obj .pin{background:var(--ink)}
+  #puente{position:absolute; top:70px; height:1px; background:var(--ink)}
+  .leyenda{display:flex; gap:18px; margin-top:8px; color:var(--ink-dim); font-size:10px}
+  .leyenda .pin{display:inline-block; width:7px; height:7px; border-radius:50%; vertical-align:middle; margin-right:5px}
+  .leyenda .med .pin{background:#fff; border:2px solid var(--ink)}
+  .leyenda .obj .pin{background:var(--ink)}
+</style>
+</head>
+<body>
+  <header>
+    <h1 id="logo" title="recargar">FORJA</h1>
+    <p>fotómetro ↔ flash · Polaris (décimas) → cámara (tercios) · Canon 5D Mk III</p>
+  </header>
+
+  <!-- 01 · medición -->
+  <section>
+    <div class="stage-num"><span class="n">01</span><span class="arrow">›</span><span class="t">Medición · lo que dice el Polaris con el flash como esté</span></div>
+    <div class="sub">no importa en qué potencia está el flash: el ajuste que calcularemos es relativo</div>
+    <div class="sub">paso entero</div>
+    <div class="fila" id="f-pasos"></div>
+    <div class="sub">décimas</div>
+    <div class="fila" id="f-dec"></div>
+  </section>
+
+  <!-- 02 · objetivo -->
+  <section>
+    <div class="stage-num"><span class="n">02</span><span class="arrow">›</span><span class="t">Objetivo · lo que quieres que marque el fotómetro</span></div>
+    <div class="sub">ese mismo número es el que va en la cámara · los enteros, en negrita, son el terreno común exacto</div>
+    <div class="fila tercios" id="f-obj"></div>
+  </section>
+
+  <!-- 03 · resultado -->
+  <section id="res">
+    <div class="stage-num"><span class="n">03</span><span class="arrow">›</span><span class="t">Ajuste · mueve el flash y vuelve a medir</span></div>
+    <p id="flash-linea"></p>
+    <div id="flash-nota"></div>
+
+    <div class="alts">
+      <div class="alt"><span class="tag">o en la cámara</span><span id="alt-cam"></span></div>
+      <div class="alt">
+        <span class="tag">o con ISO</span>
+        <span>estás en ISO <select id="iso-act"></select> →</span>
+        <span id="alt-iso"></span>
+      </div>
+    </div>
+
+    <div id="regla-wrap">
+      <div class="sub">las dos rejillas · tercios (cámara, arriba) y décimas (fotómetro y flash, abajo) solo coinciden en los pasos enteros</div>
+      <div id="regla"></div>
+      <div class="leyenda">
+        <span class="med"><span class="pin"></span>medición</span>
+        <span class="obj"><span class="pin"></span>objetivo</span>
+      </div>
+    </div>
+  </section>
+
+<script>
+'use strict';
+// ============================================================
+// FORJA · fotómetro↔flash — lógica pura (sin DOM)
+// Unidad interna: 1/30 de paso (u). 1 tercio = 10u · 1 décima = 3u · 1 paso = 30u
+// Referencia EV 0 = f/1.0
+// Verificada en Node: test.js · 6 grupos · barrido 11×10×31
+// ============================================================
+
+// --- escalas nominales ---
+const PASOS_ENTEROS = ['1.0','1.4','2.0','2.8','4.0','5.6','8.0','11','16','22','32'];
+const APERTURAS_TERCIOS = [
+  '1.0','1.1','1.2','1.4','1.6','1.8','2.0','2.2','2.5','2.8','3.2','3.5',
+  '4.0','4.5','5.0','5.6','6.3','7.1','8.0','9.0','10','11','13','14',
+  '16','18','20','22','25','29','32'
+];
+const ISOS_TERCIOS = [
+  '100','125','160','200','250','320','400','500','640','800','1000','1250',
+  '1600','2000','2500','3200','4000','5000','6400'
+];
+
+// --- conversiones a unidades (u = 1/30 paso) ---
+// medición del fotómetro: índice de paso entero (0..10) + décimas (0..9)
+function medicionAU(pasoIdx, decimas){ return pasoIdx * 30 + decimas * 3; }
+// diafragma objetivo: índice en la rejilla de tercios (0..30)
+function tercioAU(tercioIdx){ return tercioIdx * 10; }
+// ISO: índice en tercios; ISO sube = MÁS sensibilidad = compensa +u
+function isoAU(isoIdx){ return isoIdx * 10; }
+
+// --- delta principal ---
+// positivo = falta luz (hay que SUBIR el flash); negativo = sobra (BAJAR)
+function deltaU(medU, targetU){ return targetU - medU; }
+
+// --- salida flash (décimas verdaderas) ---
+// devuelve { decimas: entero con signo, restoU: unidades no representables (−1..+1) }
+function aDecimas(du){
+  const dec = Math.round(du / 3);
+  return { decimas: dec, restoU: du - dec * 3 };
+}
+
+// --- salida cámara: tercio más cercano a la medición ---
+function aTercioCercano(medU){
+  const t = Math.round(medU / 10);
+  const clamped = Math.max(0, Math.min(APERTURAS_TERCIOS.length - 1, t));
+  return { tercioIdx: clamped, restoU: medU - clamped * 10 };
+}
+
+// --- salida ISO: compensar delta moviendo ISO (en tercios) ---
+// falta luz (+du) => subir ISO. devuelve índice destino y resto.
+function isoCompensa(isoIdx, du){
+  const saltoTercios = Math.round(du / 10);
+  const destino = isoIdx + saltoTercios;
+  const ok = destino >= 0 && destino < ISOS_TERCIOS.length;
+  return { destino, ok, restoU: du - saltoTercios * 10 };
+}
+
+// --- formatos ---
+function fmtPasos(u){                       // "+1.3" / "−0.7" / "0"
+  if (u === 0) return '0';
+  const abs = Math.abs(u) / 30;
+  const s = u > 0 ? '+' : '−';
+  return s + (Math.round(abs * 10) / 10).toFixed(1);
+}
+function fmtResto(u){                        // resto en fracción de paso
+  if (u === 0) return null;
+  return (u > 0 ? '+' : '−') + '1/30';
+}
+function fmtTercioRel(u){                    // "+⅓" "−⅔" para pasos en tercios
+  const t = Math.round(u / 10);
+  const m = { '1':'+⅓','2':'+⅔','-1':'−⅓','-2':'−⅔' };
+  return m[String(t)] || (t === 0 ? '' : fmtPasos(u));
+}
+
+// teorema de la rejilla: el ajuste de flash es exacto en décimas
+// si y solo si el objetivo es un paso entero
+function ajusteExacto(medU, targetU){ return (targetU - medU) % 3 === 0; }
+
+// ============================================================
+// DOM
+// ============================================================
+(function(){
+  const $ = (id)=> document.getElementById(id);
+  const est = { paso: 5, dec: 0, obj: 18, iso: 0 }; // f/5.6 .0 -> f/8 · ISO 100
+
+  $('logo').addEventListener('click', ()=> location.reload());
+
+  // --- construir filas de botones ---
+  function fila(cont, items, claseFn, onPick, selFn){
+    items.forEach((label, i)=>{
+      const b = document.createElement('button');
+      b.textContent = label;
+      const extra = claseFn ? claseFn(i) : '';
+      if(extra) b.className = extra;
+      b.addEventListener('click', ()=>{ onPick(i); pintar(); calcular(); });
+      cont.appendChild(b);
+    });
+    return ()=> Array.from(cont.children).forEach((b,i)=> b.classList.toggle('on', selFn(i)));
+  }
+  const pintores = [
+    fila($('f-pasos'), PASOS_ENTEROS.map(p=>'f/'+p), null, i=>est.paso=i, i=>i===est.paso),
+    fila($('f-dec'), ['.0','.1','.2','.3','.4','.5','.6','.7','.8','.9'], null, i=>est.dec=i, i=>i===est.dec),
+    fila($('f-obj'), APERTURAS_TERCIOS.map(a=>a), i=> i%3===0?'entero':'', i=>est.obj=i, i=>i===est.obj),
+  ];
+  function pintar(){ pintores.forEach(f=>f()); }
+
+  // ISO actual
+  ISOS_TERCIOS.forEach((iso,i)=>{
+    const o = document.createElement('option'); o.value=i; o.textContent=iso;
+    $('iso-act').appendChild(o);
+  });
+  $('iso-act').addEventListener('change', ()=>{ est.iso = +$('iso-act').value; calcular(); });
+
+  // --- cálculo y render de resultado ---
+  function calcular(){
+    const medU = medicionAU(est.paso, est.dec);
+    const objU = tercioAU(est.obj);
+    const du = deltaU(medU, objU);
+
+    // flash (respuesta principal)
+    if(du === 0){
+      $('flash-linea').textContent = 'no toques nada';
+      $('flash-nota').textContent = 'la medición ya es exactamente tu objetivo.';
+    }else{
+      const d = aDecimas(du);
+      const verbo = du > 0 ? 'sube el flash' : 'baja el flash';
+      const dial = (d.decimas>0?'+':'−') + (Math.abs(d.decimas)/10).toFixed(1);
+      $('flash-linea').innerHTML = verbo + ' <b>' + dial + '</b> <small>pasos, en décimas del dial</small>';
+      $('flash-nota').textContent = d.restoU === 0
+        ? 'ajuste exacto: tu objetivo es un paso entero, y ahí las décimas y los tercios coinciden.'
+        : 'el dial no llega exacto: queda un resto de ' + fmtResto(d.restoU) + ' de paso (imperceptible). Pasa siempre que el objetivo no es un paso entero.';
+    }
+
+    // alternativa cámara
+    const cam = aTercioCercano(medU);
+    let camTxt;
+    if(du === 0){
+      camTxt = 'ya estás disparando a la medición.';
+    }else{
+      camTxt = 'deja el flash como está y dispara a <b>f/' + APERTURAS_TERCIOS[cam.tercioIdx] + '</b> (el tercio más cercano a tu medición)';
+      camTxt += cam.restoU === 0 ? '.' : ' <span class="resto">· resto ' + fmtResto(cam.restoU) + '</span>';
+    }
+    $('alt-cam').innerHTML = camTxt;
+
+    // alternativa ISO
+    const iso = isoCompensa(est.iso, du);
+    let isoTxt;
+    if(du === 0){
+      isoTxt = 'nada que compensar.';
+    }else if(!iso.ok){
+      isoTxt = 'no alcanza: saldrías del rango ISO 100–6400.';
+    }else{
+      isoTxt = 'mantén f/' + APERTURAS_TERCIOS[est.obj] + ' y pasa a <b>ISO ' + ISOS_TERCIOS[iso.destino] + '</b>';
+      isoTxt += iso.restoU === 0 ? '.' : ' <span class="resto">· resto ' + fmtResto(iso.restoU) + '</span>';
+    }
+    $('alt-iso').innerHTML = isoTxt;
+
+    regla(medU, objU);
+  }
+
+  // --- regla EV con las dos rejillas ---
+  function regla(medU, objU){
+    const r = $('regla'); r.innerHTML = '<div class="eje"></div>';
+    // ventana: del paso entero inferior al superior que contengan ambos puntos, mínimo 1 paso
+    let u0 = Math.floor(Math.min(medU, objU) / 30) * 30;
+    let u1 = Math.ceil(Math.max(medU, objU) / 30) * 30;
+    if(u1 - u0 < 30) u1 = u0 + 30;
+    u0 = Math.max(0, u0 - 0); u1 = Math.min(300, u1);
+    const X = (u)=> ((u - u0) / (u1 - u0)) * 100;
+
+    // ticks de tercios (arriba) y décimas (abajo)
+    for(let u = u0; u <= u1; u += 10){
+      const ent = u % 30 === 0;
+      r.insertAdjacentHTML('beforeend',
+        '<div class="tick '+(ent?'entero':'tercio')+'" style="left:'+X(u)+'%"></div>' +
+        (ent ? '<div class="ticklab arriba" style="left:'+X(u)+'%">f/'+PASOS_ENTEROS[u/30]+'</div>' : ''));
+    }
+    for(let u = u0; u <= u1; u += 3){
+      if(u % 30 !== 0) r.insertAdjacentHTML('beforeend', '<div class="tick decima" style="left:'+X(u)+'%"></div>');
+    }
+    // puente medición->objetivo
+    if(medU !== objU){
+      const a = Math.min(X(medU), X(objU)), b = Math.max(X(medU), X(objU));
+      r.insertAdjacentHTML('beforeend', '<div id="puente" style="left:'+a+'%; width:'+(b-a)+'%"></div>');
+    }
+    r.insertAdjacentHTML('beforeend',
+      '<div class="marca med" style="left:'+X(medU)+'%"><span class="pin"></span>M</div>' +
+      '<div class="marca obj" style="left:'+X(objU)+'%"><span class="pin"></span>O</div>');
+  }
+
+  pintar(); calcular();
+})();
+</script>
+</body>
+</html>
