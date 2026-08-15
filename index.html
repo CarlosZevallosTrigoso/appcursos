@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>appcursos · índice</title>
+<meta name="description" content="Índice de apps didácticas por curso.">
+<style>
+  :root{
+    --bg:#ffffff;
+    --panel:#f4f4f4;
+    --line:#d5d5d5;
+    --ink:#111111;
+    --ink-dim:#767676;
+    --accent:#111111;
+    --accent-dim:#444444;
+    --mono: ui-monospace, "SF Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:var(--mono); font-size:12px; line-height:1.5;
+    display:flex; flex-direction:column; min-height:100vh;
+  }
+
+  header{
+    padding:14px 20px 10px; border-bottom:1px solid var(--line);
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  }
+  header h1{
+    margin:0; font-size:12px; font-weight:600; letter-spacing:.18em;
+  }
+  header p{margin:0; color:var(--ink-dim); font-size:11px}
+  header .cuenta{margin-left:auto; color:var(--ink-dim); font-size:10px; letter-spacing:.06em; text-transform:uppercase}
+
+  /* buscador */
+  #barra{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:10px 20px; border-bottom:1px solid var(--line);
+  }
+  #buscar{
+    font-family:var(--mono); font-size:12px; color:var(--ink);
+    background:var(--bg); border:1px solid var(--line); border-radius:2px;
+    padding:6px 9px; min-width:220px; flex:1; max-width:420px;
+  }
+  #buscar::placeholder{color:var(--ink-dim)}
+  #buscar:focus{outline:none; border-color:var(--accent)}
+  #barra .pista{color:var(--ink-dim); font-size:10px; letter-spacing:.04em}
+  #barra kbd{
+    font-family:var(--mono); font-size:10px; border:1px solid var(--line);
+    border-radius:2px; padding:1px 4px; background:var(--panel);
+  }
+
+  main{flex:1; padding:6px 20px 28px}
+
+  .curso{padding:16px 0 4px; border-bottom:1px solid var(--line)}
+  .curso:last-of-type{border-bottom:0}
+  .curso > h2{
+    margin:0 0 2px; font-size:11px; font-weight:600;
+    letter-spacing:.14em; text-transform:uppercase;
+  }
+  .curso > .meta{margin:0 0 12px; color:var(--ink-dim); font-size:10px; letter-spacing:.06em}
+
+  .rejilla{
+    display:grid; gap:10px; padding-bottom:16px;
+    grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));
+  }
+
+  a.app{
+    display:flex; flex-direction:column; gap:6px;
+    padding:12px 13px; text-decoration:none; color:inherit;
+    border:1px solid var(--line); border-radius:2px; background:var(--bg);
+    transition:border-color .12s, background .12s;
+  }
+  a.app:hover{border-color:var(--accent); background:#fafafa}
+  a.app:focus-visible{outline:1px solid var(--accent); outline-offset:2px}
+  a.app .fila{display:flex; align-items:baseline; gap:8px}
+  a.app .titulo{font-size:13px; font-weight:600; letter-spacing:.1em}
+  a.app .detalle{color:var(--ink-dim); font-size:11px}
+  a.app .desc{color:var(--accent-dim); font-size:11px; line-height:1.45}
+  a.app .archivo{
+    margin-top:auto; padding-top:4px; color:var(--ink-dim);
+    font-size:10px; letter-spacing:.04em; word-break:break-all;
+  }
+  a.app .flecha{margin-left:auto; color:var(--ink-dim)}
+  a.app:hover .flecha{color:var(--accent)}
+
+  .vacio{color:var(--ink-dim); font-size:11px; padding:20px 0}
+
+  footer{
+    border-top:1px solid var(--line); background:var(--panel);
+    padding:12px 20px; color:var(--ink-dim); font-size:10px;
+    display:flex; gap:20px; flex-wrap:wrap; letter-spacing:.04em;
+  }
+  footer b{color:var(--accent-dim); font-weight:600}
+
+  @media (max-width:760px){
+    .rejilla{grid-template-columns:1fr}
+    #barra .pista{display:none}
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>APPCURSOS</h1>
+    <p>apps didácticas · una carpeta por curso</p>
+    <span class="cuenta" id="cuenta"></span>
+  </header>
+
+  <div id="barra">
+    <input id="buscar" type="search" autocomplete="off" spellcheck="false"
+           placeholder="filtrar por app, curso o tema…" aria-label="Filtrar apps">
+    <span class="pista">pulsa <kbd>/</kbd> para buscar · <kbd>esc</kbd> para limpiar</span>
+  </div>
+
+  <main id="lista" aria-live="polite"></main>
+
+  <footer>
+    <span>estructura · <b>apps/&lt;curso&gt;/&lt;app&gt;.html</b></span>
+    <span>manifiesto · <b>apps/apps.js</b></span>
+    <span>regenerar · <b>node scripts/build-index.mjs</b></span>
+  </footer>
+
+<script src="apps/apps.js"></script>
+<script>
+'use strict';
+(function(){
+  const DATOS = (window.APPCURSOS && window.APPCURSOS.cursos) || [];
+  const lista  = document.getElementById('lista');
+  const buscar = document.getElementById('buscar');
+  const cuenta = document.getElementById('cuenta');
+
+  const TOTAL = DATOS.reduce((n, c) => n + c.apps.length, 0);
+
+  // texto plano de una app, para filtrar
+  function indice(curso, app){
+    return [curso.nombre, curso.id, app.titulo, app.detalle, app.descripcion, app.archivo]
+      .filter(Boolean).join(' ').toLowerCase();
+  }
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function tarjeta(app){
+    return '<a class="app" href="' + esc(app.ruta) + '">' +
+             '<div class="fila">' +
+               '<span class="titulo">' + esc(app.titulo) + '</span>' +
+               (app.detalle ? '<span class="detalle">' + esc(app.detalle) + '</span>' : '') +
+               '<span class="flecha">→</span>' +
+             '</div>' +
+             (app.descripcion ? '<div class="desc">' + esc(app.descripcion) + '</div>' : '') +
+             '<div class="archivo">' + esc(app.archivo) + '</div>' +
+           '</a>';
+  }
+
+  function pintar(q){
+    const filtro = (q || '').trim().toLowerCase();
+    let visibles = 0;
+    let html = '';
+
+    DATOS.forEach(curso => {
+      const apps = curso.apps.filter(a => !filtro || indice(curso, a).includes(filtro));
+      if(!apps.length) return;
+      visibles += apps.length;
+      html += '<section class="curso">' +
+                '<h2>' + esc(curso.nombre) + '</h2>' +
+                '<p class="meta">' + apps.length + (apps.length === 1 ? ' app' : ' apps') +
+                  ' · apps/' + esc(curso.id) + '/</p>' +
+                '<div class="rejilla">' + apps.map(tarjeta).join('') + '</div>' +
+              '</section>';
+    });
+
+    if(!DATOS.length){
+      html = '<p class="vacio">no hay apps registradas todavía · añade una en apps/&lt;curso&gt;/ y regenera el manifiesto</p>';
+    } else if(!visibles){
+      html = '<p class="vacio">nada coincide con «' + esc(filtro) + '»</p>';
+    }
+
+    lista.innerHTML = html;
+    cuenta.textContent = filtro ? visibles + ' / ' + TOTAL + ' apps' : TOTAL + (TOTAL === 1 ? ' app' : ' apps');
+  }
+
+  buscar.addEventListener('input', () => pintar(buscar.value));
+  buscar.addEventListener('keydown', e => {
+    if(e.key === 'Escape'){ buscar.value = ''; pintar(''); }
+  });
+  document.addEventListener('keydown', e => {
+    if(e.key === '/' && document.activeElement !== buscar){
+      e.preventDefault(); buscar.focus(); buscar.select();
+    }
+  });
+
+  pintar('');
+})();
+</script>
+</body>
+</html>
