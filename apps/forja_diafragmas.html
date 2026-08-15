@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FORJA · diafragmas</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --panel:#f4f4f4;
+    --line:#d5d5d5;
+    --ink:#111111;
+    --ink-dim:#767676;
+    --accent:#111111;
+    --accent-dim:#444444;
+    --mono: ui-monospace, "SF Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:var(--mono); font-size:12px; line-height:1.5;
+    display:flex; flex-direction:column; min-height:100vh;
+  }
+
+  header{
+    padding:14px 20px 10px; border-bottom:1px solid var(--line);
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  }
+  header h1{
+    margin:0; font-size:12px; font-weight:600; letter-spacing:.18em; cursor:pointer;
+    user-select:none;
+  }
+  header h1:hover{color:var(--accent)}
+  header p{margin:0; color:var(--ink-dim); font-size:11px}
+
+  /* eje didáctico: extremos de la escala */
+  #eje{
+    display:flex; justify-content:space-between; padding:10px 20px 0;
+    color:var(--ink-dim); font-size:10px; letter-spacing:.04em;
+  }
+  #eje .lado b{color:var(--ink); font-weight:600}
+  #eje .lado.der{text-align:right}
+
+  /* tira horizontal */
+  #tira{
+    flex:1; display:flex; align-items:center; gap:0;
+    overflow-x:auto; overflow-y:hidden; padding:12px 20px 20px;
+    scrollbar-width:thin; scrollbar-color:var(--line) transparent;
+  }
+  .stop{
+    flex:none; display:flex; flex-direction:column; align-items:center; gap:8px;
+    padding:14px 7px 12px; cursor:pointer; border:1px solid transparent; border-radius:2px;
+    transition:border-color .12s, background .12s;
+  }
+  .stop:hover{border-color:var(--line); background:#fafafa}
+  .stop.sel{border-color:var(--accent); background:#fafafa}
+  .stop:focus-visible{outline:1px solid var(--accent); outline-offset:2px}
+
+  /* iris: aro fijo (montura) + abertura proporcional a 1/N */
+  .iris{
+    width:56px; height:56px; border-radius:50%;
+    border:1px solid var(--line); position:relative; flex:none;
+    background:#ffffff;
+  }
+  .stop.full .iris{border-color:var(--accent-dim)}
+  .hueco{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    border-radius:50%; background:var(--ink);
+  }
+  .stop.full .hueco{background:var(--accent)}
+
+  .fnum{font-size:12px; color:var(--ink-dim); white-space:nowrap}
+  .stop.full .fnum{color:var(--accent); font-weight:600}
+  .paso{font-size:9px; color:var(--ink-dim); letter-spacing:.06em; text-transform:uppercase; min-height:12px}
+  .stop.full .paso{color:var(--accent-dim)}
+
+  /* separador visual entre pasos completos: leve línea antes de cada full */
+  .stop.full{border-left:1px solid var(--line); border-radius:0 2px 2px 0}
+  .stop.full.sel{border-color:var(--accent)}
+  #tira .stop:first-child{border-left:1px solid transparent}
+
+  /* lectura didáctica */
+  #lectura{
+    border-top:1px solid var(--line); background:var(--panel);
+    padding:12px 20px; min-height:64px;
+    display:flex; align-items:center; gap:24px; flex-wrap:wrap;
+  }
+  #lectura .dato{display:flex; flex-direction:column; gap:2px}
+  #lectura .dato span{color:var(--ink-dim); font-size:10px; letter-spacing:.06em; text-transform:uppercase}
+  #lectura .dato b{color:var(--ink); font-weight:600; font-size:13px; font-variant-numeric:tabular-nums}
+  #lectura .dato b.ac{color:var(--accent)}
+  #lectura .vacio{color:var(--ink-dim); font-size:11px}
+
+  @media (max-width:760px){
+    .iris{width:44px; height:44px}
+    #lectura{gap:16px}
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1 id="logo" title="recargar">FORJA</h1>
+    <p>diafragmas · escala en tercios · Canon 5D Mk III</p>
+  </header>
+
+  <div id="eje">
+    <div class="lado"><b>← más abierto</b> · más luz · menos profundidad de campo</div>
+    <div class="lado der"><b>más cerrado →</b> · menos luz · más profundidad de campo</div>
+  </div>
+
+  <main id="tira" role="listbox" aria-label="Escala de diafragmas"></main>
+
+  <footer id="lectura"><span class="vacio">toca un diafragma para leerlo · el punto interior es la abertura real a escala · en negrita, los pasos completos</span></footer>
+
+<script>
+'use strict';
+// ============================================================
+// FORJA · diafragmas — lógica pura (sin DOM)
+// Verificada en Node: test.js · 7 grupos de aserciones
+// ============================================================
+
+// Etiquetas nominales Canon, f/1.0 -> f/32, en tercios (31 valores)
+const APERTURAS = [
+  '1.0','1.1','1.2',
+  '1.4','1.6','1.8',
+  '2.0','2.2','2.5',
+  '2.8','3.2','3.5',
+  '4.0','4.5','5.0',
+  '5.6','6.3','7.1',
+  '8.0','9.0','10',
+  '11','13','14',
+  '16','18','20',
+  '22','25','29',
+  '32'
+];
+
+// índice de tercios -> ¿paso completo?
+function esPasoCompleto(i){ return i % 3 === 0; }
+
+// valor N exacto (progresión geométrica): N = 2^(i/6)
+function nExacto(i){ return Math.pow(2, i/6); }
+
+// EV respecto a f/1.0 (cada 3 tercios = 1 paso = mitad de luz)
+function evDesdeF1(i){ return i/3; }
+
+// fracción de luz respecto a f/1.0: 1/2^(i/3)
+function fraccionLuz(i){ return Math.pow(2, -i/3); }
+
+// denominador "bonito" para pasos completos: 1/1, 1/2, 1/4 ... 1/1024
+function fraccionTexto(i){
+  if (i % 3 === 0) return '1/' + Math.pow(2, i/3);
+  return '1/' + (Math.pow(2, i/3)).toFixed(1); // tercios: aproximado
+}
+
+// diámetro relativo de la abertura física: proporcional a 1/N, normalizado a f/1.0
+function diametroRelativo(i){ return 1 / nExacto(i); }
+
+// ============================================================
+// DOM
+// ============================================================
+(function(){
+  const tira = document.getElementById('tira');
+  const lectura = document.getElementById('lectura');
+  const IRIS_MAX = 48; // px del hueco a f/1.0 (dentro del aro de 56)
+  let sel = -1;
+
+  document.getElementById('logo').addEventListener('click', ()=> location.reload());
+
+  APERTURAS.forEach((label, i)=>{
+    const full = esPasoCompleto(i);
+    const el = document.createElement('div');
+    el.className = 'stop' + (full ? ' full' : '');
+    el.setAttribute('role','option');
+    el.setAttribute('tabindex','0');
+    el.dataset.i = i;
+
+    const d = Math.max(2, diametroRelativo(i) * IRIS_MAX);
+    el.innerHTML =
+      '<div class="iris"><div class="hueco" style="width:'+d.toFixed(1)+'px;height:'+d.toFixed(1)+'px"></div></div>' +
+      '<div class="fnum">f/'+label+'</div>' +
+      '<div class="paso">'+(full ? 'paso' : '')+'</div>';
+
+    el.addEventListener('click', ()=> seleccionar(i));
+    el.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'||e.key===' '){ e.preventDefault(); seleccionar(i); }
+      if(e.key==='ArrowRight'){ e.preventDefault(); mover(i+1); }
+      if(e.key==='ArrowLeft'){ e.preventDefault(); mover(i-1); }
+    });
+    tira.appendChild(el);
+  });
+
+  function mover(i){
+    if(i<0 || i>=APERTURAS.length) return;
+    const el = tira.children[i];
+    el.focus(); seleccionar(i);
+    el.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
+  }
+
+  function seleccionar(i){
+    if(sel>=0) tira.children[sel].classList.remove('sel');
+    sel = i;
+    tira.children[i].classList.add('sel');
+
+    const full = esPasoCompleto(i);
+    const ev = evDesdeF1(i);
+    const evTxt = ev===0 ? '0' : '−'+(Number.isInteger(ev)? ev : ev.toFixed(2).replace(/0+$/,'').replace(/\.$/,''));
+    lectura.innerHTML =
+      dato('diafragma', 'f/'+APERTURAS[i], true) +
+      dato('tipo', full ? 'paso completo' : 'tercio de paso') +
+      dato('luz vs f/1.0', fraccionTexto(i)) +
+      dato('EV vs f/1.0', evTxt) +
+      (full && i>0 ? dato('vs paso anterior', 'la mitad de luz') : '') +
+      (full && i<APERTURAS.length-1 ? dato('vs paso siguiente', 'el doble de luz') : '');
+  }
+
+  function dato(k, v, ac){
+    return '<div class="dato"><span>'+k+'</span><b'+(ac?' class="ac"':'')+'>'+v+'</b></div>';
+  }
+})();
+</script>
+</body>
+</html>
